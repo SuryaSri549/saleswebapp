@@ -120,6 +120,28 @@ from flask import abort
 # Create Flask app
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-me")
+# --- Toggle auth off for demos ---
+AUTH_DISABLED = os.environ.get("AUTH_DISABLED", "0") in ("1", "true", "yes")
+
+if AUTH_DISABLED:
+    # 1) Make login_required & roles_required do nothing
+    def login_required(fn):  # overrides the imported decorator name
+        return fn
+
+    def roles_required(*roles):
+        def _deco(fn):
+            return fn
+        return _deco
+
+    # 2) Pretend a user is always logged in, with a role (so templates work)
+    class _DemoUser:
+        is_authenticated = True
+        role = "manager"     # change to 'analyst' or 'admin' if you prefer
+        username = "demo"
+
+    @app.context_processor
+    def _inject_demo_user():
+        return {"current_user": _DemoUser()}
 
 # --- Debug routes (add right after app is created) ---
 @app.get("/health")
@@ -536,9 +558,10 @@ def compare_forecast_models(df_grouped, periods=6):
 
     return chart_base64
 
-
-
-
+@app.route("/favicon.ico")
+def favicon():
+    from flask import send_from_directory
+    return send_from_directory(os.path.join(BASEDIR, "static"), "favicon.ico")
 
 @app.route("/", methods=["GET"])
 def home():
@@ -582,31 +605,17 @@ def home():
   <a class="navbar-brand fw-semibold" href="/">
     <i class="bi bi-graph-up-arrow me-1"></i> Sales Insights
   </a>
-  <div class="ms-auto d-flex align-items-center gap-2">
+<div class="ms-auto d-flex align-items-center gap-2">
+  <!-- Always show dashboard buttons -->
+  <a class="btn btn-sm btn-outline-success" href="/manager-dashboard">
+    <i class="bi bi-speedometer2"></i> Manager Dashboard
+  </a>
+  <a class="btn btn-sm btn-outline-dark" href="/analyst-dashboard">
+    <i class="bi bi-speedometer2"></i> Analyst Dashboard
+  </a>
+
+  <!-- Optional auth controls (show Login/Logout if you still use auth) -->
   {% if current_user.is_authenticated %}
-    <span class="badge text-bg-primary text-capitalize">{{ current_user.role }}</span>
-
-    {# Admin-only button #}
-    {% if current_user.role == 'admin' %}
-      <a class="btn btn-sm btn-outline-primary" href="/admin">
-        <i class="bi bi-gear"></i> Admin Dashboard
-      </a>
-    {% endif %}
-
-    {# Manager-only button #}
-    {% if current_user.role == 'manager' %}
-      <a class="btn btn-sm btn-outline-success" href="/manager-dashboard">
-        <i class="bi bi-speedometer2"></i> Manager Dashboard
-      </a>
-    {% endif %}
-                                  
-    {# Analyst-only button #}
-    {% if current_user.is_authenticated and (current_user.role|lower == 'analyst') %}
-      <a class="btn btn-sm btn-outline-dark" href="/analyst-dashboard">
-      <i class="bi bi-speedometer2"></i> Analyst Dashboard
-      </a>
-    {% endif %}
-
     <a class="btn btn-sm btn-outline-secondary" href="/logout">
       <i class="bi bi-box-arrow-right"></i> Logout
     </a>
@@ -620,6 +629,7 @@ def home():
     <i class="bi bi-moon-stars"></i>
   </button>
 </div>
+
 </nav>
 
 <script>
@@ -6402,6 +6412,5 @@ def build_top_subcat_chart_base64(df, n=10):
 
 
 if __name__ == "__main__":
-
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
