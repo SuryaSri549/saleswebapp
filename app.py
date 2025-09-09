@@ -108,6 +108,7 @@ except Exception:
     def get_monthly_sales_chart(*a, **k): return None
     def get_top_products_chart(*a, **k): return None
     def generate_filtered_chart(*a, **k): return None
+
 from flask_login import (
     LoginManager, UserMixin, login_user, login_required,
     current_user, logout_user
@@ -984,6 +985,16 @@ def logout():
     logout_user()
     return "<p>👋 Logged out</p><a href='/'>Back to Home</a>"
 
+# ---- Quick tail of app log (last ~500 lines) ----
+@app.get("/logs")
+def view_logs():
+    import html
+    try:
+        with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
+            tail = f.readlines()[-500:]
+        return "<pre>" + html.escape("".join(tail)) + "</pre>"
+    except Exception as e:
+        return f"<p>Could not read log: {e}</p>", 500
 
 @app.route("/admin")
 @login_required
