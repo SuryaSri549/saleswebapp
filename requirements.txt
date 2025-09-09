@@ -1,0 +1,11 @@
+Flask
+flask-login
+Werkzeug
+gunicorn
+numpy
+pandas
+matplotlib
+scikit-learn
+statsmodels
+scipy
+# prophet   # add later only if needed
