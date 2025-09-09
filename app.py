@@ -1,150 +1,106 @@
-from flask import Flask, render_template, request, render_template_string, redirect, url_for, flash, g
-import sqlite3
-import pickle
+# ===== PREAMBLE (imports + setup) =====
+from flask import Flask, render_template, request, render_template_string, redirect, url_for, flash, g, abort, send_from_directory
+import os, sys, time, json, sqlite3, logging, base64, pickle, datetime
+from logging.handlers import RotatingFileHandler
+from functools import wraps
+from io import BytesIO
+
 import numpy as np
 import pandas as pd
 import matplotlib
-matplotlib.use('Agg') 
+matplotlib.use("Agg")  # headless rendering for servers
 import matplotlib.pyplot as plt
-from io import BytesIO
-import base64
 from sklearn.cluster import KMeans
-import datetime
-import secrets, string
-import os
 
-import time
-import sys
-import json
-import logging
-from logging.handlers import RotatingFileHandler
+# Try real auth; fall back to harmless stubs if not available
+try:
+    from flask_login import (
+        LoginManager, UserMixin, login_user, login_required,
+        current_user, logout_user
+    )
+    from werkzeug.security import generate_password_hash, check_password_hash
+except Exception:
+    LoginManager = object  # dummy so type names exist
+    UserMixin = object
+    def login_user(*a, **k): return False
+    def logout_user(*a, **k): return None
+    login_required = lambda f: f
+    class _StubUser:
+        is_authenticated = False
+        role = ""
+        username = ""
+    current_user = _StubUser()
+    def generate_password_hash(x): return x
+    def check_password_hash(h, p): return h == p
 
-
-# --- Where to write logs (next to app.py) ---
-BASEDIR = os.path.abspath(os.path.dirname(__file__))
-
-DATA_CSV = os.path.join(BASEDIR, "superstore_extended.csv")
-USERS_DB = os.path.join(BASEDIR, "app_users.db")   # for SQLite users DB
-MODEL_MONTHLY    = os.path.join(BASEDIR, "sales_forecast_model_monthly.pkl")
-MODEL_YEARLY     = os.path.join(BASEDIR, "sales_forecast_model_yearly.pkl")
+# ---------- Paths & logging ----------
+BASEDIR       = os.path.abspath(os.path.dirname(__file__))
+DATA_CSV      = os.path.join(BASEDIR, "superstore_extended.csv")
+USERS_DB      = os.path.join(BASEDIR, "app_users.db")
 SUPERSTORE_DB = os.path.join(BASEDIR, "superstore.db")
 SEGMENTED_CSV = os.path.join(BASEDIR, "segmented_customers.csv")
 MODEL_PATH    = os.path.join(BASEDIR, "sales_model.pkl")
+MODEL_MONTHLY = os.path.join(BASEDIR, "sales_forecast_model_monthly.pkl")
+MODEL_YEARLY  = os.path.join(BASEDIR, "sales_forecast_model_yearly.pkl")
+
 LOG_DIR  = os.path.join(BASEDIR, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOG_DIR, "app.log")
-
-
-# ensure file exists so you can tail immediately
 open(LOG_FILE, "a", encoding="utf-8").close()
 
-# --- Handlers/format ---
-formatter = logging.Formatter(
-    "%(asctime)s [%(levelname)s] %(name)s %(funcName)s:%(lineno)d — %(message)s"
-)
-file_handler = RotatingFileHandler(
-    LOG_FILE, maxBytes=5*1024*1024, backupCount=3, encoding="utf-8"
-)
-file_handler.setFormatter(formatter)
-file_handler.setLevel(logging.INFO)
+fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s %(funcName)s:%(lineno)d — %(message)s")
+fh = RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=3, encoding="utf-8")
+fh.setFormatter(fmt); fh.setLevel(logging.INFO)
+ch = logging.StreamHandler()
+ch.setFormatter(fmt); ch.setLevel(logging.INFO)
+logging.basicConfig(handlers=[fh, ch], level=logging.INFO, force=True)
 
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(formatter)
-console_handler.setLevel(logging.INFO)
-
-# Force global logging config (overrides any prior handlers/config)
-logging.basicConfig(handlers=[file_handler, console_handler], level=logging.INFO, force=True)
-
-
-# --- Root logger (captures most libraries too) ---
-root_logger = logging.getLogger()
-root_logger.setLevel(logging.INFO)
-# avoid double-adding if auto-reloads
-if not any(isinstance(h, RotatingFileHandler) for h in root_logger.handlers):
-    root_logger.addHandler(file_handler)
-if not any(isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler)
-           for h in root_logger.handlers):
-    root_logger.addHandler(console_handler)
-
-# Log *all* SQL executed by sqlite3 (Python 3.12+ only)
-if hasattr(sqlite3, "set_trace_callback"):
-    try:
-        def _sqlite_trace(statement):
-            logging.getLogger("sql").info("SQL: %s", statement)
-        sqlite3.set_trace_callback(_sqlite_trace)
-    except Exception as e:
-        logging.getLogger("sql").warning("Could not enable sqlite trace: %s", e)
-else:
-    ver = f"{sys.version_info.major}.{sys.version_info.minor}"
+if not hasattr(sqlite3, "set_trace_callback"):
     logging.getLogger("sql").warning(
-        "sqlite3.set_trace_callback not available in Python %s (requires 3.12+)", ver
+        "sqlite3.set_trace_callback not available in Python %s.%s (requires 3.12+)",
+        sys.version_info.major, sys.version_info.minor
     )
 
-# --- Redaction helpers for sensitive fields ---
-_SENSITIVE_KEYS = {"password", "passwd", "pwd", "secret", "token", "access_token", "authorization"}
-
-def _redact_mapping(d):
-    if not isinstance(d, dict):
-        return d
-    out = {}
-    for k, v in d.items():
-        out[k] = "***REDACTED***" if k and k.lower() in _SENSITIVE_KEYS else v
-    return out
-
-def _safe_json(obj):
-    try:
-        return json.dumps(obj, ensure_ascii=False, default=str)
-    except Exception:
-        return str(obj)
-try:
-    from product_analysis import (
-        generate_region_chart_base64,
-        get_monthly_sales_chart,
-        get_top_products_chart,
-        generate_filtered_chart
-    )
-except Exception:
-    def generate_region_chart_base64(*a, **k): return None
-    def get_monthly_sales_chart(*a, **k): return None
-    def get_top_products_chart(*a, **k): return None
-    def generate_filtered_chart(*a, **k): return None
-
-from flask_login import (
-    LoginManager, UserMixin, login_user, login_required,
-    current_user, logout_user
-)
-from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.exceptions import HTTPException
-from functools import wraps
-from flask import abort
-
-# Create Flask app
+# ---------- Flask app ----------
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-me")
-# --- Toggle auth off for demos ---
-AUTH_DISABLED = os.environ.get("AUTH_DISABLED", "0") in ("1", "true", "yes")
+app.logger.addHandler(fh); app.logger.addHandler(ch)
+app.logger.propagate = False
+app.logger.info("🚀 App started. Logging to: %s", LOG_FILE)
+
+# ---------- Auth toggle (demo mode) ----------
+AUTH_DISABLED = os.environ.get("AUTH_DISABLED", "0").lower() in ("1", "true", "yes")
 
 if AUTH_DISABLED:
-    # 1) Make login_required & roles_required do nothing
-    def login_required(fn):  # overrides the imported decorator name
-        return fn
-
+    # Make auth decorators no-ops so all routes are public
+    def login_required(fn): return fn
     def roles_required(*roles):
-        def _deco(fn):
-            return fn
-        return _deco
+        def _wrap(fn): return fn
+        return _wrap
 
-    # 2) Pretend a user is always logged in, with a role (so templates work)
+    # Inject a fake logged-in user so templates work
     class _DemoUser:
         is_authenticated = True
-        role = "manager"     # change to 'analyst' or 'admin' if you prefer
+        role = "manager"   # change to "analyst" if you prefer
         username = "demo"
-
     @app.context_processor
     def _inject_demo_user():
         return {"current_user": _DemoUser()}
+else:
+    # Real roles_required when auth is ON
+    def roles_required(*roles):
+        def decorator(fn):
+            @wraps(fn)
+            def wrapper(*args, **kwargs):
+                if not getattr(current_user, "is_authenticated", False):
+                    return abort(401)
+                if getattr(current_user, "role", "") not in roles:
+                    return abort(403)
+                return fn(*args, **kwargs)
+            return wrapper
+        return decorator
 
-# --- Debug routes (add right after app is created) ---
+# ---------- Handy debug endpoints ----------
 @app.get("/health")
 def _health():
     return "OK from " + __file__
@@ -153,138 +109,47 @@ def _health():
 def _routes():
     return "<pre>" + "\n".join(sorted(r.rule for r in app.url_map.iter_rules())) + "</pre>"
 
-@app.get("/log-path", strict_slashes=False)
+@app.get("/log-path")
 def _log_path():
-    import os
     return f"LOG_FILE: {LOG_FILE}<br>exists: {os.path.exists(LOG_FILE)}"
 
-
-# Attach logging handler to app
-app.logger.setLevel(logging.INFO)
-app.logger.addHandler(file_handler)
-app.logger.addHandler(console_handler)
-app.logger.propagate = False   # prevent duplicate lines
-app.logger.info("🚀 App started. Logging to: %s", LOG_FILE)
-
-
-
-# --- Global request/response logging ---
-@app.route("/log-test")
-def log_test():
-    app.logger.info("Manual test log from /log-test route")
-    return "Logged a test line. Check app.log."
-
-def _dump_routes_now():
-    rules = sorted(r.rule for r in app.url_map.iter_rules())
-    text = "Registered routes:\n" + "\n".join(rules)
-    app.logger.info(text)
-    print(text)
-
-
-@app.before_request
-def _log_request():
-    g._start_ts = time.perf_counter()
-
-    # Collect inputs
-    args = request.args.to_dict(flat=False) or {}
-    form = request.form.to_dict(flat=False) or {}
+@app.get("/logs")
+def _logs():
+    import html
     try:
-        body_json = request.get_json(silent=True)
-    except Exception:
-        body_json = None
+        with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
+            tail = f.readlines()[-500:]
+        return "<pre>" + html.escape("".join(tail)) + "</pre>"
+    except Exception as e:
+        return f"<p>Could not read log: {e}</p>", 500
 
-    # Redact
-    form_flat = {k: (v[0] if isinstance(v, list) and len(v) == 1 else v) for k, v in form.items()}
-    args_red = {k: ["***REDACTED***" if k.lower() in _SENSITIVE_KEYS else v for v in vs] for k, vs in args.items()}
-    form_red = _redact_mapping(form_flat)
-    json_red = _redact_mapping(body_json) if isinstance(body_json, dict) else body_json
-
-    # Try user info if flask-login is present
-    uname = ""
-    urole = ""
-    try:
-        from flask_login import current_user
-        if getattr(current_user, "is_authenticated", False):
-            uname = getattr(current_user, "username", "")
-            urole = getattr(current_user, "role", "")
-    except Exception:
-        pass
-
-    app.logger.info(
-        "➡️ %s %s | ip=%s | user=%s role=%s | args=%s | form=%s | json=%s",
-        request.method,
-        request.path,
-        request.headers.get("X-Forwarded-For") or request.remote_addr,
-        uname, urole,
-        _safe_json(args_red),
-        _safe_json(form_red),
-        _safe_json(json_red),
-    )
-
-@app.after_request
-def _log_response(resp):
-    dur_ms = (time.perf_counter() - getattr(g, "_start_ts", time.perf_counter())) * 1000.0
-    app.logger.info(
-        "⬅️ %s %s — %s in %.1f ms — len=%s",
-        request.method,
-        request.path,
-        resp.status,
-        dur_ms,
-        resp.content_length,
-    )
-    return resp
-
-@app.errorhandler(Exception)
-def _log_exception(e):
-    # Let Flask handle HTTP errors (404, 405, etc.) correctly
-    if isinstance(e, HTTPException):
-        app.logger.warning("HTTP %s at %s %s", e.code, request.method, request.path)
-        return e
-
-    # Everything else = 500 + stack trace
-    app.logger.exception("💥 Unhandled exception at %s %s", request.method, request.path)
-    return ("<h3>Internal Server Error</h3><p>Check logs/app.log</p>", 500)
-
-
-
-
-# ---- Shared helper: plot -> base64 PNG ----
+# ---------- Shared helpers ----------
 def fig_to_base64():
+    """Save current Matplotlib figure to base64 PNG and close it."""
     buf = BytesIO()
     plt.savefig(buf, format="png", bbox_inches="tight")
     buf.seek(0)
     out = base64.b64encode(buf.read()).decode("utf-8")
     plt.close()
     return out
+
 def find_col(df, wanted, aliases=None):
-    """
-    Return an existing column name from df matching 'wanted' or any alias (case-insensitive).
-    Example: find_col(df, 'Profit', ['profit', 'Total Profit'])
-    """
-    if aliases is None:
-        aliases = []
+    """Return column name matching 'wanted' or any alias (case-insensitive)."""
+    aliases = aliases or []
     wanted_all = [wanted] + aliases
-    # normalize once
     norm = {c.lower(): c for c in df.columns}
     for name in wanted_all:
         if name.lower() in norm:
             return norm[name.lower()]
     return None
-def fig_to_base64():
-    buf = BytesIO()
-    plt.savefig(buf, format="png", bbox_inches="tight")
-    buf.seek(0)
-    out = base64.b64encode(buf.read()).decode("utf-8")
-    plt.close()
-    return out
+
 def build_daily_demand(df, subcat=None, region=None):
     """
-    Returns a daily demand pandas Series (index=day, values=demand units).
-    Uses Sales as 'units' proxy; resamples to daily sum; fills missing days with 0.
+    Returns a daily demand Series. Uses Sales as units proxy; resamples to daily sum.
+    Requires 'Order Date' and 'Sales' columns.
     """
     if "Order Date" not in df.columns or "Sales" not in df.columns:
         raise ValueError("CSV must contain 'Order Date' and 'Sales' columns.")
-
     d = df.copy()
     d["Order Date"] = pd.to_datetime(d["Order Date"], errors="coerce")
     d = d.dropna(subset=["Order Date", "Sales"])
@@ -292,28 +157,24 @@ def build_daily_demand(df, subcat=None, region=None):
         d = d[d["Sub-Category"] == subcat]
     if region and "Region" in d.columns:
         d = d[d["Region"] == region]
-
     if d.empty:
         return pd.Series(dtype=float)
-
-    daily = (d.set_index("Order Date")["Sales"]
-               .astype(float)
-               .resample("D").sum()
-               .fillna(0.0))
+    daily = (
+        d.set_index("Order Date")["Sales"]
+         .astype(float)
+         .resample("D").sum()
+         .fillna(0.0)
+    )
     return daily
 
-
 def reorder_point_normal(mean_d, std_d, lead_time_days, service_level):
-    """
-    ROP = mean_d * L + z * std_d * sqrt(L)
-    service_level ∈ (0,1). If std=0 or very short history, safety stock becomes 0.
-    """
+    """ROP = mean_d * L + z * std_d * sqrt(L)."""
+    from math import sqrt
     from scipy.stats import norm
-    z = norm.ppf(min(max(service_level, 0.50), 0.999))  # clamp
+    z = norm.ppf(min(max(service_level, 0.50), 0.999))
     mu_L = mean_d * lead_time_days
-    sigma_L = std_d * (lead_time_days ** 0.5)
+    sigma_L = std_d * sqrt(lead_time_days)
     return max(0.0, mu_L + z * sigma_L)
-
 
 def simulate_inventory_mc(
     demand_series,
@@ -326,11 +187,8 @@ def simulate_inventory_mc(
     horizon_days=90,
 ):
     """
-    Monte Carlo inventory sim (continuous review approximated daily).
-    - Demand is sampled by bootstrapping from historical daily demand distribution.
-    - Policy: reorder when on-hand + on-order - backorder < ROP, order up to (ROP*order_up_to_multiplier).
-    - Backorders allowed (track stockouts).
-    Returns: dict with KPIs, per-run inventory paths, and per-day percentiles.
+    Monte Carlo inventory simulation with simple reorder policy.
+    Returns KPIs + percentile envelope for on-hand inventory.
     """
     if len(demand_series) < 14:
         raise ValueError("Not enough history to simulate (need at least ~14 days).")
@@ -342,52 +200,39 @@ def simulate_inventory_mc(
 
     hist = demand_series.values
     n_hist = len(hist)
-
-    # Storage for runs
-    paths = []      # list of DataFrames per run
-    stockout_flags = []
-
     rng = np.random.default_rng(seed=42)
 
-    for r in range(runs):
-        days = pd.date_range(start=pd.Timestamp.today().normalize(), periods=horizon_days, freq="D")
+    paths, stockout_flags = [], []
 
+    for _ in range(runs):
+        days = pd.date_range(start=pd.Timestamp.today().normalize(), periods=horizon_days, freq="D")
         on_hand = initial_stock
-        on_order = []  # list of tuples (arrival_day_index, qty)
+        on_order = []  # (arrival_day_index, qty)
         backorder = 0.0
 
-        inv = []
-        ords = []
-        bkgs = []
-        outs = []
+        inv, ords, bkgs, outs = [], [], [], []
 
-        for t, day in enumerate(days):
-            # Receive any orders arriving today
+        for t, _day in enumerate(days):
             arrivals = [qty for (arrive_t, qty) in on_order if arrive_t == t]
             if arrivals:
                 on_hand += sum(arrivals)
-            # keep only future
             on_order = [(arrive_t, qty) for (arrive_t, qty) in on_order if arrive_t > t]
 
-            # Sample today's demand (bootstrap)
             d_t = float(hist[rng.integers(0, n_hist)])
-            # Serve demand
+
             available = max(0.0, on_hand - backorder)
             if d_t <= available:
-                # all demand met; first cover backlog then new demand
                 serve_backlog = min(backorder, on_hand)
                 on_hand -= serve_backlog
                 backorder -= serve_backlog
-                on_hand -= (d_t)
+                on_hand -= d_t
                 stockout_today = 0
             else:
-                # stockout occurs
                 needed = d_t - available
                 on_hand = max(0.0, on_hand - backorder)
                 backorder = needed
                 stockout_today = 1
 
-            # Place order if it's a review day and net position below ROP
             if (t % review_period_days) == 0:
                 net_pos = on_hand + sum(q for _, q in on_order) - backorder
                 if net_pos < rop:
@@ -401,10 +246,8 @@ def simulate_inventory_mc(
             else:
                 order_qty = 0.0
 
-            inv.append(on_hand)
-            ords.append(order_qty)
-            bkgs.append(backorder)
-            outs.append(stockout_today)
+            inv.append(on_hand); ords.append(order_qty)
+            bkgs.append(backorder); outs.append(stockout_today)
 
         df_run = pd.DataFrame({
             "date": days,
@@ -416,16 +259,10 @@ def simulate_inventory_mc(
         paths.append(df_run)
         stockout_flags.append(int(any(df_run["stockout"] == 1)))
 
-    # KPIs
-    stockout_prob = np.mean(stockout_flags)
-    # Fill rate approx (orders met / total demand) — we can estimate from last run
-    last = paths[-1]
-    # Approx demand per day as served+backorder delta; better: keep demand in loop; here estimate:
-    # We'll just compute average backorder and on_hand:
+    stockout_prob = float(np.mean(stockout_flags))
     avg_on_hand = float(np.mean([p["on_hand"].mean() for p in paths]))
     avg_backorders = float(np.mean([p["backorder"].mean() for p in paths]))
 
-    # Percentile bands across runs (on_hand)
     df_concat = pd.concat([p.set_index("date")["on_hand"].rename(i) for i, p in enumerate(paths)], axis=1)
     pct = df_concat.quantile([0.1, 0.5, 0.9], axis=1).T  # columns: 0.1, 0.5, 0.9
 
@@ -434,32 +271,20 @@ def simulate_inventory_mc(
         "order_up_to": order_up_to,
         "mean_demand": mean_d,
         "std_demand": std_d,
-        "stockout_prob": float(stockout_prob),
+        "stockout_prob": stockout_prob,
         "avg_on_hand": avg_on_hand,
         "avg_backorders": avg_backorders,
         "paths": paths,
         "percentiles": pct.reset_index().rename(columns={"index": "date", 0.1: "p10", 0.5: "p50", 0.9: "p90"})
     }
 
-login_manager = LoginManager(app)
-login_manager.login_view = "login"  # where to redirect if not logged in
-def get_all_users():
-    with get_db() as con:
-        rows = con.execute("SELECT id, username, role FROM users ORDER BY role, username").fetchall()
-    return rows
+# ---------- Flask-Login setup & Users DB ----------
+if isinstance(LoginManager, type):  # only if real flask_login is available
+    login_manager = LoginManager(app)
+    login_manager.login_view = "login"
+else:
+    login_manager = None  # stubs in effect
 
-def set_user_password(user_id, new_password):
-    with get_db() as con:
-        con.execute(
-            "UPDATE users SET password_hash=? WHERE id=?",
-            (generate_password_hash(new_password), user_id)
-        )
-
-def delete_user(user_id):
-    with get_db() as con:
-        con.execute("DELETE FROM users WHERE id=?", (user_id,))
-
-# ---------- Users DB (SQLite) ----------
 def get_db():
     conn = sqlite3.connect(USERS_DB)
     conn.row_factory = sqlite3.Row
@@ -475,53 +300,38 @@ def init_user_db():
                 role TEXT CHECK(role IN ('admin','manager','analyst')) NOT NULL
             );
         """)
-        # seed default admin (admin1 / pass123)
         if not con.execute("SELECT 1 FROM users WHERE username=?", ('admin1',)).fetchone():
             con.execute(
                 "INSERT INTO users (username, password_hash, role) VALUES (?,?,?)",
                 ('admin1', generate_password_hash('pass123'), 'admin')
             )
 
-# initialize the users DB at startup
 init_user_db()
+
 class User(UserMixin):
     def __init__(self, id, username, password_hash, role):
         self.id = id
         self.username = username
         self.password_hash = password_hash
         self.role = role
-
     @staticmethod
     def from_row(row):
         return User(row["id"], row["username"], row["password_hash"], row["role"])
 
-@login_manager.user_loader
-def load_user(user_id):
-    with get_db() as con:
-        row = con.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
-    return User.from_row(row) if row else None
+if login_manager:
+    @login_manager.user_loader
+    def load_user(user_id):
+        with get_db() as con:
+            row = con.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        return User.from_row(row) if row else None
 
-
-def roles_required(*roles):
-    def decorator(fn):
-        @wraps(fn)
-        def wrapper(*args, **kwargs):
-            if not current_user.is_authenticated:
-                # flask-login will redirect to login page if you also use @login_required
-                return abort(401)
-            if current_user.role not in roles:
-                return abort(403)
-            return fn(*args, **kwargs)
-        return wrapper
-    return decorator
-
-# --------------------------
-# 📈 Compare ARIMA vs Prophet
-# --------------------------
+# ---------- Forecast model comparison (Prophet vs ARIMA) ----------
 def compare_forecast_models(df_grouped, periods=6):
-    
-    # Prophet
     from prophet import Prophet
+    from statsmodels.tsa.arima.model import ARIMA
+    from pandas.tseries.offsets import DateOffset
+
+    # Prophet
     prophet_df = df_grouped.rename(columns={"Month": "ds", "Sales": "y"})
     m = Prophet()
     m.fit(prophet_df)
@@ -530,12 +340,9 @@ def compare_forecast_models(df_grouped, periods=6):
     prophet_plot = forecast_prophet[['ds', 'yhat']].tail(periods)
 
     # ARIMA
-    from statsmodels.tsa.arima.model import ARIMA
-    from pandas.tseries.offsets import DateOffset
     arima_model = ARIMA(df_grouped['Sales'], order=(1, 1, 1))
     arima_fit = arima_model.fit()
     forecast_arima = arima_fit.forecast(steps=periods)
-
     last_date = df_grouped['Month'].max()
     arima_dates = [last_date + DateOffset(months=i) for i in range(1, periods + 1)]
 
@@ -545,24 +352,22 @@ def compare_forecast_models(df_grouped, periods=6):
     plt.plot(prophet_plot['ds'], prophet_plot['yhat'], label='Prophet Forecast', linestyle='--')
     plt.plot(arima_dates, forecast_arima, label='ARIMA Forecast', linestyle='--')
     plt.title("ARIMA vs Prophet Forecast")
-    plt.xlabel("Month")
-    plt.ylabel("Sales")
-    plt.xticks(rotation=45)
-    plt.legend()
-    plt.tight_layout()
+    plt.xlabel("Month"); plt.ylabel("Sales"); plt.xticks(rotation=45)
+    plt.legend(); plt.tight_layout()
 
-    img = BytesIO()
-    plt.savefig(img, format='png')
-    img.seek(0)
+    img = BytesIO(); plt.savefig(img, format='png'); img.seek(0)
     chart_base64 = base64.b64encode(img.read()).decode('utf-8')
     plt.close()
-
     return chart_base64
 
+# ---------- Favicon (stop 404s) ----------
 @app.route("/favicon.ico")
 def favicon():
-    from flask import send_from_directory
     return send_from_directory(os.path.join(BASEDIR, "static"), "favicon.ico")
+
+# ===== END PREAMBLE (everything above home()) =====
+
+
 
 @app.route("/", methods=["GET"])
 def home():
@@ -6424,4 +6229,4 @@ def build_top_subcat_chart_base64(df, n=10):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+app.run(host="0.0.0.0", port=port, debug=False)
