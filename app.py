@@ -4,7 +4,8 @@ import os, sys, time, json, sqlite3, logging, base64, pickle, datetime
 from logging.handlers import RotatingFileHandler
 from functools import wraps
 from io import BytesIO
-
+import string
+import secrets
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -19,6 +20,7 @@ try:
         current_user, logout_user
     )
     from werkzeug.security import generate_password_hash, check_password_hash
+  
 except Exception:
     LoginManager = object  # dummy so type names exist
     UserMixin = object
@@ -60,6 +62,31 @@ if not hasattr(sqlite3, "set_trace_callback"):
         "sqlite3.set_trace_callback not available in Python %s.%s (requires 3.12+)",
         sys.version_info.major, sys.version_info.minor
     )
+def generate_region_chart_base64(selected_region: str, df: pd.DataFrame) -> str | None:
+    try:
+        sdf = df[df.get("Region") == selected_region].copy()
+        sdf["Sales"] = pd.to_numeric(sdf["Sales"], errors="coerce")
+        sdf = sdf.dropna(subset=["Sales"])
+        if sdf.empty:
+            return None
+
+        top = (sdf.groupby("Sub-Category")["Sales"]
+                 .sum()
+                 .sort_values(ascending=False)
+                 .head(10))
+
+        plt.figure(figsize=(9, 4))
+        top.plot(kind="bar")
+        plt.title(f"Top Sub-Categories in {selected_region}")
+        plt.xlabel("Sub-Category"); plt.ylabel("Sales"); plt.tight_layout()
+
+        buf = BytesIO(); plt.savefig(buf, format="png"); buf.seek(0)
+        out = base64.b64encode(buf.read()).decode("utf-8")
+        plt.close()
+        return out
+    except Exception:
+        plt.close()
+        return None
 
 # ---------- Flask app ----------
 app = Flask(__name__)
@@ -307,6 +334,32 @@ def init_user_db():
             )
 
 init_user_db()
+from dataclasses import dataclass
+
+@dataclass
+class SimpleUser:
+    id: int
+    username: str
+    role: str
+
+def get_all_users():
+    with get_db() as con:
+        rows = con.execute(
+            "SELECT id, username, role FROM users ORDER BY id"
+        ).fetchall()
+    return [SimpleUser(r["id"], r["username"], r["role"]) for r in rows]
+
+from werkzeug.security import generate_password_hash  # already imported higher — safe to repeat
+
+def set_user_password(uid: int, raw_password: str):
+    with get_db() as con:
+        con.execute(
+            "UPDATE users SET password_hash=? WHERE id=?",
+            (generate_password_hash(raw_password), uid),
+        )
+def delete_user(uid: int):
+    with get_db() as con:
+        con.execute("DELETE FROM users WHERE id=?", (uid,))
 
 class User(UserMixin):
     def __init__(self, id, username, password_hash, role):
@@ -6227,6 +6280,7 @@ def build_top_subcat_chart_base64(df, n=10):
     return out
 
 
+# --- run locally only ---
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-app.run(host="0.0.0.0", port=port, debug=False)
+    import os
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
