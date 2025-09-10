@@ -1,19 +1,21 @@
-# Ignore Python virtual environments
+@"
+# Python venvs
 venv/
 .venv/
 
-# Ignore logs
+# Logs
 logs/
 *.log
 
-# Ignore Python cache
+# Python cache
 __pycache__/
 *.pyc
 
-# Ignore environment variables
+# Env files
 .env
 
-# Ignore datasets and model files (optional)
+# (optional) local data/models
 *.csv
-*.pkl
 *.db
+*.pkl
+"@ | Set-Content .gitignore
