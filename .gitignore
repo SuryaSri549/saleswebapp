@@ -1,0 +1,19 @@
+# Ignore Python virtual environments
+venv/
+.venv/
+
+# Ignore logs
+logs/
+*.log
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore environment variables
+.env
+
+# Ignore datasets and model files (optional)
+*.csv
+*.pkl
+*.db
