@@ -1780,3 +1780,23 @@ werkzeug.exceptions.NotFound: 404 Not Found: The requested URL was not found on 
 2025-09-09 16:17:08,518 [WARNING] app _log_exception:218 — HTTP 404 at GET /favicon.ico
 2025-09-09 16:17:08,524 [INFO] app _log_response:204 — ⬅️ GET /favicon.ico — 404 NOT FOUND in 9.4 ms — len=207
 2025-09-09 16:17:08,525 [INFO] werkzeug _log:97 — 192.168.1.17 - - [09/Sep/2025 16:17:08] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2025-09-09 18:37:20,440 [WARNING] sql <module>:79 — sqlite3.set_trace_callback not available in Python 3.11 (requires 3.12+)
+2025-09-09 18:37:20,470 [INFO] app <module>:166 — 🚀 App started. Logging to: C:\Users\surya\OneDrive\Desktop\saleswebapp\logs\app.log
+2025-09-09 18:37:21,840 [INFO] werkzeug _log:97 — [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.1.17:5000
+2025-09-09 18:37:21,843 [INFO] werkzeug _log:97 — [33mPress CTRL+C to quit[0m
+2025-09-09 20:44:05,894 [WARNING] sql <module>:59 — sqlite3.set_trace_callback not available in Python 3.11 (requires 3.12+)
+2025-09-09 20:44:05,896 [INFO] app <module>:69 — 🚀 App started. Logging to: C:\Users\surya\OneDrive\Desktop\saleswebapp\logs\app.log
+2025-09-09 20:44:07,232 [INFO] werkzeug _log:97 — [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.1.17:5000
+2025-09-09 20:44:07,242 [INFO] werkzeug _log:97 — [33mPress CTRL+C to quit[0m
+2025-09-09 20:45:39,913 [INFO] werkzeug _log:97 — 127.0.0.1 - - [09/Sep/2025 20:45:39] "GET / HTTP/1.1" 200 -
+2025-09-09 20:45:40,187 [INFO] werkzeug _log:97 — 127.0.0.1 - - [09/Sep/2025 20:45:40] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2025-09-09 20:45:42,663 [INFO] werkzeug _log:97 — 127.0.0.1 - - [09/Sep/2025 20:45:42] "GET /manager-dashboard HTTP/1.1" 200 -
+2025-09-09 20:45:45,029 [INFO] werkzeug _log:97 — 127.0.0.1 - - [09/Sep/2025 20:45:45] "GET / HTTP/1.1" 200 -
+2025-09-09 20:45:47,977 [INFO] werkzeug _log:97 — 127.0.0.1 - - [09/Sep/2025 20:45:47] "GET /analyst-dashboard HTTP/1.1" 200 -
+2025-09-09 20:45:49,868 [INFO] werkzeug _log:97 — 127.0.0.1 - - [09/Sep/2025 20:45:49] "GET / HTTP/1.1" 200 -
