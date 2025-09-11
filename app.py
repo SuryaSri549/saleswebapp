@@ -722,7 +722,6 @@ def home():
 
 
 @app.route("/data-diagnostics")
-@login_required
 def data_diagnostics():
     try:
         df = pd.read_csv(DATA_CSV)
@@ -980,8 +979,6 @@ def admin_delete_user(uid):
     return redirect(url_for("admin_dashboard"))
 
 @app.route("/predict", methods=["POST"])
-@login_required
-@roles_required("analyst", "manager")
 def predict():
     import numpy as np
     import pickle
@@ -1565,8 +1562,6 @@ def customers():
 
 
 @app.route('/forecast', methods=['GET', 'POST'])
-@login_required
-@roles_required("manager", "analyst")
 def forecast():
     import base64
     import pickle
@@ -1819,9 +1814,6 @@ def forecast():
     error_msg=error_msg)
 
 @app.route('/forecast_subcat', methods=['GET', 'POST'])
-@app.route('/forecast-subcat', methods=['GET', 'POST'])
-@login_required
-@roles_required("analyst", "manager")
 def forecast_subcat():
     import base64
     import numpy as np
@@ -2080,8 +2072,6 @@ def forecast_subcat():
     error_msg=error_msg)
 
 @app.route('/roi', methods=['GET', 'POST'])
-@login_required
-@roles_required("manager", "analyst")
 def roi_analysis():
     import pandas as pd
     import matplotlib.pyplot as plt
@@ -2354,8 +2344,6 @@ def roi_analysis():
 
 
 @app.route("/recommend", methods=["GET", "POST"])
-@login_required
-@roles_required("analyst", "manager")
 def recommend():
     import base64
     from io import StringIO
@@ -3086,8 +3074,6 @@ def top_products():
 
 
 @app.route("/profitability", methods=["GET", "POST"])
-@login_required
-@roles_required("manager", "analyst")
 def profitability():
     import pandas as pd
     import matplotlib.pyplot as plt
@@ -3423,8 +3409,6 @@ def profitability():
 
 
 @app.route("/kpi-tracker", methods=["GET", "POST"])
-@login_required
-@roles_required("manager", "analyst")
 def kpi_tracker():
     import pandas as pd
     import matplotlib.pyplot as plt
@@ -3780,8 +3764,6 @@ def kpi_tracker():
     table_rows=table_rows)
 
 @app.route("/manager-dashboard")
-@login_required
-@roles_required("manager")
 def manager_dashboard():
     import pandas as pd
     import numpy as np
@@ -4143,8 +4125,6 @@ def _safe_num(x):
 
 
 @app.route("/discount-impact", methods=["GET", "POST"])
-@login_required
-@roles_required("manager", "analyst")
 def discount_impact():
     # ---- imports kept INSIDE so names are always defined ----
     import base64, numpy as np, pandas as pd, matplotlib
@@ -4606,9 +4586,7 @@ def discount_impact():
     )
 
 
-@app.route("/analyst-dashboard", methods=["GET", "POST"])
-@login_required
-@roles_required("manager", "analyst")  # analysts get full access like managers
+@app.route("/analyst-dashboard", methods=["GET", "POST"]) # analysts get full access like managers
 def analyst_dashboard():
     import pandas as pd, numpy as np, matplotlib.pyplot as plt
     import base64
@@ -5101,8 +5079,6 @@ def analyst_dashboard():
 
 
 @app.route("/stock-alert", methods=["GET", "POST"])
-@login_required
-@roles_required("manager", "analyst")
 def stock_alert():
     import pandas as pd
     import numpy as np
@@ -5431,8 +5407,6 @@ def stock_alert():
 
 
 @app.route("/interactive-analysis", methods=["GET", "POST"])
-@login_required
-@roles_required("analyst", "manager")
 def interactive_analysis():
     import pandas as pd
     import matplotlib.pyplot as plt
@@ -5761,8 +5735,7 @@ def interactive_analysis():
 
 
 @app.route("/compare-models", methods=["GET", "POST"])
-@login_required
-@roles_required("manager", "analyst")
+
 def compare_models():
     import pandas as pd
     import numpy as np
