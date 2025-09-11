@@ -437,62 +437,44 @@ def home():
 
   <!-- Bootstrap CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
   <!-- Bootstrap Icons -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
 
   <style>
-    :root {
-      --brand: #0d6efd; /* Bootstrap primary */
-      --card-radius: 14px;
-    }
-    body { padding: 24px; background-color: #f7f8fa; }
-    .card { border-radius: var(--card-radius); box-shadow: 0 6px 20px rgba(0,0,0,0.05); }
-    .card h4 { margin-bottom: 14px; }
-    .section-title { display: flex; align-items: center; gap: 8px; }
-    .section-title .bi { opacity: .8; }
-    .btn { border-radius: 10px; }
+    :root { --brand:#0d6efd; --card-radius:14px; }
+    body { padding:24px; background-color:#f7f8fa; }
+    .card { border-radius:var(--card-radius); box-shadow:0 6px 20px rgba(0,0,0,.05); }
+    .card h4 { margin-bottom:14px; }
+    .section-title { display:flex; align-items:center; gap:8px; }
+    .section-title .bi { opacity:.8; }
+    .btn { border-radius:10px; }
     .subtle { color:#6c757d; }
     footer { color:#6c757d; }
-    /* Dark mode support */
     [data-bs-theme="dark"] body { background-color:#0b0f14; }
   </style>
 </head>
 
-    <body>
+<body>
 <nav class="navbar navbar-expand-lg bg-body-tertiary rounded mb-4 px-3">
   <a class="navbar-brand fw-semibold" href="/">
     <i class="bi bi-graph-up-arrow me-1"></i> Sales Insights
   </a>
-<div class="ms-auto d-flex align-items-center gap-2">
-  <!-- Always show dashboard buttons -->
-  <a class="btn btn-sm btn-outline-success" href="/manager-dashboard">
-    <i class="bi bi-speedometer2"></i> Manager Dashboard
-  </a>
-  <a class="btn btn-sm btn-outline-dark" href="/analyst-dashboard">
-    <i class="bi bi-speedometer2"></i> Analyst Dashboard
-  </a>
-
-  <!-- Optional auth controls (show Login/Logout if you still use auth) -->
-  {% if current_user.is_authenticated %}
-    <a class="btn btn-sm btn-outline-secondary" href="/logout">
-      <i class="bi bi-box-arrow-right"></i> Logout
+  <div class="ms-auto d-flex align-items-center gap-2">
+    <a class="btn btn-sm btn-outline-success" href="/manager-dashboard">
+      <i class="bi bi-speedometer2"></i> Manager Dashboard
     </a>
-  {% else %}
-    <a class="btn btn-sm btn-primary" href="/login">
-      <i class="bi bi-box-arrow-in-right"></i> Login
+    <a class="btn btn-sm btn-outline-dark" href="/analyst-dashboard">
+      <i class="bi bi-speedometer2"></i> Analyst Dashboard
     </a>
-  {% endif %}
-
-  <button id="themeToggle" class="btn btn-sm btn-outline-secondary" type="button">
-    <i class="bi bi-moon-stars"></i>
-  </button>
-</div>
-
+    <!-- Removed Login/Logout buttons -->
+    <button id="themeToggle" class="btn btn-sm btn-outline-secondary" type="button">
+      <i class="bi bi-moon-stars"></i>
+    </button>
+  </div>
 </nav>
 
 <script>
-  // Simple dark-mode toggle using Bootstrap 5.3 data-bs-theme
+  // Dark mode toggle
   (function () {
     const html = document.documentElement;
     const saved = localStorage.getItem('theme') || 'light';
@@ -506,14 +488,11 @@ def home():
 </script>
 
 <div class="container">
-
   <h1 class="text-center mb-4">📊 Welcome to Sales & Customer Insights Web App 🎉</h1>
-
-  <!-- top status/login strip -->
 
   <!-- ROW 1 -->
   <div class="row g-4">
-    <!-- LEFT: Predict + Forecasting (single card; no nested cards) -->
+    <!-- LEFT: Predict + Forecasting -->
     <div class="col-lg-8">
       <div class="card h-100">
         <div class="card-body">
@@ -544,148 +523,113 @@ def home():
 
           <hr class="my-4">
 
-          {% if current_user.is_authenticated and (current_user.role == 'analyst' or current_user.role == 'manager') %}
-            <h4 class="section-title mb-3"><i class="bi bi-bar-chart-steps"></i> Forecast Future Sales</h4>
+          <!-- Forecasting (ALWAYS visible on home page) -->
+          <h4 class="section-title mb-3"><i class="bi bi-bar-chart-steps"></i> Forecast Future Sales</h4>
 
-            <!-- Tabs -->
-            <ul class="nav nav-tabs" id="forecastTabs" role="tablist">
-              <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="overall-tab" data-bs-toggle="tab" data-bs-target="#overall" type="button" role="tab" aria-controls="overall" aria-selected="true">Overall</button>
-              </li>
-              <li class="nav-item" role="presentation">
-                <button class="nav-link" id="subcat-tab" data-bs-toggle="tab" data-bs-target="#subcat" type="button" role="tab" aria-controls="subcat" aria-selected="false">Sub-Category</button>
-              </li>
-            </ul>
+          <!-- Tabs -->
+          <ul class="nav nav-tabs" id="forecastTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="overall-tab" data-bs-toggle="tab" data-bs-target="#overall" type="button" role="tab" aria-controls="overall" aria-selected="true">Overall</button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="subcat-tab" data-bs-toggle="tab" data-bs-target="#subcat" type="button" role="tab" aria-controls="subcat" aria-selected="false">Sub-Category</button>
+            </li>
+          </ul>
 
-            <div class="tab-content pt-3">
-<!-- OVERALL -->
-<div class="tab-pane fade show active" id="overall" role="tabpanel" aria-labelledby="overall-tab">
-  <form action="/forecast" method="post" class="row row-cols-1 row-cols-md-3 g-3 align-items-end" id="overallForm">
-    
-    <!-- Periods -->
-    <div class="col">
-      <label class="form-label">Periods</label>
-      <div class="input-group">
-        <input type="number" name="periods" min="1" value="6" class="form-control" required>
-        <span class="input-group-text" id="overallUnit">months</span>
-      </div>
-      <div class="form-text">How far ahead to predict.</div>
-    </div>
-
-    <!-- Forecast Type -->
-    <div class="col">
-      <label class="form-label">Forecast Type</label>
-      <select name="forecast_type" class="form-select" id="forecastTypeOverall">
-        <option value="monthly" selected>Monthly</option>
-        <option value="yearly">Yearly</option>
-      </select>
-      <div class="form-text">Choose monthly or yearly forecast.</div>
-    </div>
-
-    <!-- Quick presets -->
-    <div class="col">
-      <label class="form-label d-block">Quick presets</label>
-      <div class="btn-group w-100" role="group" aria-label="Quick presets">
-        <button class="btn btn-outline-secondary btn-sm preset" data-val="3" type="button">3</button>
-        <button class="btn btn-outline-secondary btn-sm preset" data-val="6" type="button">6</button>
-        <button class="btn btn-outline-secondary btn-sm preset" data-val="12" type="button">12</button>
-      </div>
-      <div class="form-text text-end text-md-start">Adjust periods quickly.</div>
-    </div>
-
-    <!-- Submit (full row, right aligned) -->
-    <div class="col-12 text-end">
-      <button type="submit" class="btn btn-success" id="overallSubmit">
-        <span class="spinner-border spinner-border-sm me-1 d-none" id="overallSpinner" aria-hidden="true"></span>
-        Forecast
-      </button>
-    </div>
-  </form>
-</div>
-
-
-              <!-- SUB-CATEGORY -->
-              <div class="tab-pane fade" id="subcat" role="tabpanel" aria-labelledby="subcat-tab">
-                <form action="/forecast-subcat" method="post" class="row g-3 align-items-end" id="subcatForm">
-                  <div class="col-md-5">
-                    <label class="form-label">Sub-Category</label>
-                    <select name="subcategory" class="form-select" required>
-                      {% for subcat in subcategories %}
-                        <option value="{{ subcat }}">{{ subcat }}</option>
-                      {% endfor %}
-                    </select>
+          <div class="tab-content pt-3">
+            <!-- OVERALL -->
+            <div class="tab-pane fade show active" id="overall" role="tabpanel" aria-labelledby="overall-tab">
+              <form action="/forecast" method="post" class="row row-cols-1 row-cols-md-3 g-3 align-items-end" id="overallForm">
+                <div class="col">
+                  <label class="form-label">Periods</label>
+                  <div class="input-group">
+                    <input type="number" name="periods" min="1" value="6" class="form-control" required>
+                    <span class="input-group-text" id="overallUnit">months</span>
                   </div>
+                  <div class="form-text">How far ahead to predict.</div>
+                </div>
 
-                  <div class="col-sm-6 col-md-3">
-                    <label class="form-label">Type</label>
-                    <select name="forecast_type" class="form-select">
-                      <option value="months" selected>Monthly</option>
-                      <option value="years">Yearly</option>
-                    </select>
-                  </div>
+                <div class="col">
+                  <label class="form-label">Forecast Type</label>
+                  <select name="forecast_type" class="form-select" id="forecastTypeOverall">
+                    <option value="monthly" selected>Monthly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                  <div class="form-text">Choose monthly or yearly forecast.</div>
+                </div>
 
-                  <div class="col-sm-6 col-md-3">
-                    <label class="form-label">Periods</label>
-                    <input type="number" name="periods" min="1" max="24" value="6" class="form-control" required>
+                <div class="col">
+                  <label class="form-label d-block">Quick presets</label>
+                  <div class="btn-group w-100" role="group" aria-label="Quick presets">
+                    <button class="btn btn-outline-secondary btn-sm preset" data-val="3" type="button">3</button>
+                    <button class="btn btn-outline-secondary btn-sm preset" data-val="6" type="button">6</button>
+                    <button class="btn btn-outline-secondary btn-sm preset" data-val="12" type="button">12</button>
                   </div>
+                  <div class="form-text text-end text-md-start">Adjust periods quickly.</div>
+                </div>
 
-                  <div class="col-12">
-                    <button type="submit" class="btn btn-outline-success" id="subcatSubmit">
-                      <span class="spinner-border spinner-border-sm me-1 d-none" id="subcatSpinner" aria-hidden="true"></span>
-                      Forecast Sub-Category
-                    </button>
-                    <div class="form-text">Linear trend forecast from historical sales in the selected sub-category.</div>
-                  </div>
-                </form>
-              </div>
+                <div class="col-12 text-end">
+                  <button type="submit" class="btn btn-success" id="overallSubmit">
+                    <span class="spinner-border spinner-border-sm me-1 d-none" id="overallSpinner" aria-hidden="true"></span>
+                    Forecast
+                  </button>
+                </div>
+              </form>
             </div>
-          {% else %}
-            <div class="alert alert-info mt-3 mb-0">
-              Please <a href="/login">log in</a> to access forecasting features.
+
+            <!-- SUB-CATEGORY -->
+            <div class="tab-pane fade" id="subcat" role="tabpanel" aria-labelledby="subcat-tab">
+              <form action="/forecast-subcat" method="post" class="row g-3 align-items-end" id="subcatForm">
+                <div class="col-md-5">
+                  <label class="form-label">Sub-Category</label>
+                  <select name="subcategory" class="form-select" required>
+                    {% for subcat in subcategories %}
+                      <option value="{{ subcat }}">{{ subcat }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+
+                <div class="col-sm-6 col-md-3">
+                  <label class="form-label">Type</label>
+                  <select name="forecast_type" class="form-select">
+                    <option value="months" selected>Monthly</option>
+                    <option value="years">Yearly</option>
+                  </select>
+                </div>
+
+                <div class="col-sm-6 col-md-3">
+                  <label class="form-label">Periods</label>
+                  <input type="number" name="periods" min="1" max="24" value="6" class="form-control" required>
+                </div>
+
+                <div class="col-12">
+                  <button type="submit" class="btn btn-outline-success" id="subcatSubmit">
+                    <span class="spinner-border spinner-border-sm me-1 d-none" id="subcatSpinner" aria-hidden="true"></span>
+                    Forecast Sub-Category
+                  </button>
+                  <div class="form-text">Linear trend forecast from historical sales in the selected sub-category.</div>
+                </div>
+              </form>
             </div>
-          {% endif %}
-{% if current_user.is_authenticated and current_user.role == 'manager' %}
-  <div class="card mt-3">
-    <div class="card-body d-flex justify-content-between align-items-center">
-      <div>
-        <h5 class="mb-1">Manager Dashboard</h5>
-        <p class="text-muted mb-0">Profitability (estimated), KPI tracker, discount impact, stock alerts.</p>
-      </div>
-      <a class="btn btn-primary" href="/manager-dashboard">Open</a>
-    </div>
-  </div>
-{% endif %}
-       {# Admin quick entry card - mirrors the Manager card #}
-{% if current_user.is_authenticated and (current_user.role|lower == 'admin') %}
-  <div class="card mt-3">
-    <div class="card-body d-flex justify-content-between align-items-center">
-      <div>
-        <h5 class="mb-1">Admin Dashboard</h5>
-        <p class="text-muted mb-0">User management, role settings, data & system controls.</p>
-      </div>
-      <a class="btn btn-outline-primary" href="/admin">Open</a>
-    </div>
-  </div>
-{% endif %}
-                    
+          </div>
+
+          <!-- Removed login-required alert -->
         </div>
       </div>
     </div>
 
-<!-- RIGHT: Quick Reports + Other Options -->
-<div class="col-lg-4">
-  <div class="card h-100">
-    <div class="card-body">
-      <h4 class="section-title"><i class="bi bi-speedometer2"></i> Quick Reports</h4>
-      <div class="d-grid gap-2">
-        <a class="btn btn-warning" href="/sales-trends"><i class="bi bi-calendar2-week"></i> Monthly Sales Trend</a>
-        <a class="btn btn-warning" href="/top-products"><i class="bi bi-trophy"></i> Top Selling Sub-Categories</a>
-        <a class="btn btn-success" href="/recommend"><i class="bi bi-geo"></i> Recommend by Region</a>
-        <a class="btn btn-success" href="/compare-models"><i class="bi bi-sliders2"></i> ARIMA vs Prophet</a>
-        <a class="btn btn-info" href="/roi"><i class="bi bi-cash-coin"></i> Marketing ROI Analysis</a> <!-- NEW -->
-
-      </div>
-
+    <!-- RIGHT: Quick Reports + Other Options -->
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <h4 class="section-title"><i class="bi bi-speedometer2"></i> Quick Reports</h4>
+          <div class="d-grid gap-2">
+            <a class="btn btn-warning" href="/sales-trends"><i class="bi bi-calendar2-week"></i> Monthly Sales Trend</a>
+            <a class="btn btn-warning" href="/top-products"><i class="bi bi-trophy"></i> Top Selling Sub-Categories</a>
+            <a class="btn btn-success" href="/recommend"><i class="bi bi-geo"></i> Recommend by Region</a>
+            <a class="btn btn-success" href="/compare-models"><i class="bi bi-sliders2"></i> ARIMA vs Prophet</a>
+            <a class="btn btn-info" href="/roi"><i class="bi bi-cash-coin"></i> Marketing ROI Analysis</a>
+          </div>
 
           <hr class="my-4">
 
@@ -771,9 +715,10 @@ def home():
 })();
 </script>
 
-    </body>
-    </html>
+</body>
+</html>
     """, subcategories=subcategories)
+
 
 
 @app.route("/data-diagnostics")
