@@ -1814,6 +1814,7 @@ def forecast():
     error_msg=error_msg)
 
 @app.route('/forecast_subcat', methods=['GET', 'POST'])
+@app.route("/forecast_subcat", methods=["GET", "POST"])
 def forecast_subcat():
     import base64
     import numpy as np
