@@ -6,7 +6,7 @@ A full-stack retail analytics platform built with Python Flask, integrating mach
 
 ## Live Demo
 
-> Coming soon — deploying to Render.com
+https://saleswebapp-1hki.onrender.com/)
 
 ---
 
